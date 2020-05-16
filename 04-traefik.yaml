@@ -1,0 +1,98 @@
+#
+#
+# Ingress V2
+#
+# The definitions below require the definitions for the TLSOption and IngressRoute kinds.
+# https://docs.traefik.io/v2.2/reference/dynamic-configuration/kubernetes-crd/#definitions
+apiVersion: traefik.containo.us/v1alpha1
+kind: TLSOption
+metadata:
+  name: tlsoption
+  namespace: nextcloud-fpm
+
+spec:
+  minVersion: VersionTLS12
+  cipherSuites:
+    - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+    - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+    - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+---
+#
+# https
+#
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: https-nextcloud
+  namespace: nextcloud-fpm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - kind: Rule
+    match: Host(`myhostname.fqdn`)
+    services:
+    - kind: Service
+      name: nextcloud
+      namespace: nextcloud-fpm
+      port: 80
+    middlewares:
+      - name: sts-header
+  tls:
+     secretName: tls-user
+#     options:
+#       name: tlsoption
+#       namespace: default
+---
+#
+# http
+#
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: http-nextcloud
+  namespace: nextcloud-fpm
+spec:
+  entryPoints:
+  - web
+  routes:
+  - kind: Rule
+    match: Host(`myhostname.fqdn`)
+    services:
+    - kind: Service
+      name: nextcloud
+      namespace: nextcloud-fpm
+      port: 80
+    middlewares:
+      - name: 2https-nextcloud
+---
+#
+# http -> https2
+#
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: 2https-nextcloud
+  namespace: nextcloud-fpm
+spec:
+  redirectScheme:
+     scheme: https
+     permanent: true
+---
+#
+# HSTS
+#
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: sts-header
+  namespace: nextcloud-fpm
+spec:
+  headers:
+    stsSeconds: 15552000
+    customFrameOptionsValue: "SAMEORIGIN"
+    HostsProxyHeaders: "X-Forwarded-Host"
+    SSLProxyHeaders: "X-Forwarded-Proto: https"
+    SSLRedirect: "true"
