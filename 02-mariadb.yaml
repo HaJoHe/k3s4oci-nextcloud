@@ -1,0 +1,67 @@
+#
+#
+# Deployment
+#
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: db
+  name: db
+  namespace: nextcloud-fpm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_DATABASE
+          value: nextcloud
+        - name: MYSQL_PASSWORD
+          value: my-secret-password
+        - name: MYSQL_USER
+          value: my-nextcloud-user
+        - name: MYSQL_ROOT_PASSWORD
+          value: my-password
+        image: mariadb
+        name: db
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: db
+        - mountPath: /etc/mysql/conf.d
+          name: db-config
+      volumes:
+        - name: db
+          hostPath:
+            path: "/gluster/nextcloud/mariadb"
+        - name: db-config
+          hostPath:
+            path: "/gluster/nextcloud/mariadb_config"
+---
+#
+#
+# Services
+#
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: nextcloud-fpm
+spec:
+  ports:
+    - port: 3306
+      targetPort: 3306
+      protocol: TCP
+  selector:
+    app: db
+---
