@@ -1,0 +1,137 @@
+#
+# ConfigMap NGINX
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: php-ini
+  namespace: nextcloud-fpm
+data:
+  php.ini: |
+    [PHP]
+    upload_max_filesize = 100M
+    post_max_size = 100M
+    max_execution_time = 200   
+---
+#
+#
+# Deployment
+#
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nextcloud
+  namespace: nextcloud-fpm
+spec:
+  selector:
+    matchLabels:
+      app: nextcloud
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: nextcloud
+    spec:
+      containers:
+      #
+      # Nginx
+      #
+      - name: nginx
+        image: nginx:stable-alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+          - name: nginx-config
+            mountPath: /etc/nginx/nginx.conf
+          - name: html-shared
+            mountPath: /var/www/html
+          - name: htmldata
+            mountPath: /var/www/html/data
+          - name: html-custom-apps
+            mountPath: /var/www/html/custom_apps
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "mkdir -p /var/www/html"]
+      #
+      # Nextcloud
+      #
+      - name: nextcloud
+        image: nextcloud:fpm-alpine
+        ports:
+          - containerPort: 9000
+        volumeMounts:
+          - name: html-shared
+            mountPath: /var/www/html
+          - name: htmldata
+            mountPath: /var/www/html/data
+          - name: html-custom-apps
+            mountPath: /var/www/html/custom_apps
+          - name: nextcloud-config
+            mountPath: /var/www/html/config
+          - name: php-config
+            mountPath: /usr/local/etc/php/php.ini
+            subPath: php.ini
+        resources:
+           limits:
+             memory: 200Mi
+           requests:
+             memory: 150Mi
+##
+#        livenessProbe:
+#          failureThreshold: 2
+#          initialDelaySeconds: 180
+#          periodSeconds: 60
+#          timeoutSeconds: 10
+#          httpGet:
+#            path: /status.php
+#            port: 443
+#            host: nextcloud.dd8ne.ddnss.de
+## 
+      #
+      # local Mountpoint
+      #
+      volumes:
+         - name: html-shared
+           # Filled by nextcloud at start
+           emptyDir: {}
+         - name: htmldata
+           # User data
+           hostPath:
+             path: "/gluster/nextcloud/data"
+         - name: html-custom-apps
+           # additional apps
+           hostPath:
+             path: "/gluster/nextcloud/custom_apps"
+         - name: nextcloud-config
+           # nextcloud config
+           hostPath:
+             path: "/gluster/nextcloud/config"
+         - name: nginx-config
+           # nginx config
+           hostPath:
+             path: "/gluster/nextcloud/php/nginx.conf"
+         - name: php-config
+           # php.ini (Max Upload)
+           configMap:
+             name: php-ini
+#
+#
+# Services
+#
+#
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nextcloud
+  namespace: nextcloud-fpm
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: nextcloud
+---
